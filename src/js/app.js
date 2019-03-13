@@ -249,8 +249,6 @@ function getEachRequestSchema(accountID, apikey, runas, process, callback) {
 
 function getReqSchema(accountID, apikey, runas, processes) {
   return new Promise((resolve) => {
-    console.log(processes);
-    console.log('process count', processes.length);
     let counter = 0;
     const existingCols = [];
     const req = [];
@@ -258,7 +256,6 @@ function getReqSchema(accountID, apikey, runas, processes) {
       const id = processes[j].Id;
       getEachRequestSchema(accountID, apikey, runas, id, (res) => {
         counter += 1;
-        console.log('counter', counter);
         if (res.result === 'error') {
           tableau.log(res.error);
           res.headers = [];
@@ -271,7 +268,6 @@ function getReqSchema(accountID, apikey, runas, processes) {
           }
         });
         if (counter === processes.length) {
-          console.log('Returning', req);
           resolve(req);
         }
       });
@@ -378,8 +374,10 @@ function processProgress(progress, requestId) {
       if (parkArr[parseInt(keyArr[1], 10)]) {
         obj = parkArr[parseInt(keyArr[1], 10)];
       }
+      if (keyArr[2] === 'AssignedTo') {
+        obj.AssignedTo = progress[key];
+      }
       if (keyArr[2] === 'ReassignAudit' && keyArr[4] === 'reassigned_by') {
-        console.log('Reassign');
         obj.reassignedBy = progress[key];
       } else if (keyArr[2] === 'ReassignAudit' && keyArr[4] === 'reassigned_to') {
         obj.reassignedTo = progress[key];
@@ -542,7 +540,6 @@ kfConnector.init = (initCallback) => {
     $.ajax(settings)
       .done((response) => {
         console.log(response);
-        tableau.log(249, response);
       })
       .always(() => {
         // tableau.submit();
@@ -559,14 +556,12 @@ kfConnector.shutdown = (shutdownCallback) => {
 
 // Define the schema
 kfConnector.getSchema = (schemaCallback) => {
-  console.log('getSchama');
   tableau.reportProgress('Getting KissFlow Request Schema');
   tableau.log('261 Getting KissFlow Request Schema');
   const connData = JSON.parse(tableau.connectionData);
   getProcesses(tableau.username, tableau.password, connData.runas)
     .then(retProcesses => getReqSchema(tableau.username, tableau.password, connData.runas, retProcesses))
     .then((schRequest) => {
-      console.log('Returned', schRequest);
       tableau.log('284 Finished getting process request schema');
       schRequest.push({
         id: 'ProcessId',
@@ -603,8 +598,6 @@ kfConnector.getData = (table, doneCallback) => {
     $.ajax(settings)
       .done((response) => {
         console.log(response);
-        tableau.log('296 Stats recorded');
-        tableau.log(response);
       });
   }
   const connData = JSON.parse(tableau.connectionData);
@@ -683,7 +676,6 @@ kfConnector.getData = (table, doneCallback) => {
 tableau.registerConnector(kfConnector);
 
 function login(account, apikey, runas) {
-  console.log('Login!');
   tableau.username = account;
   tableau.password = apikey;
   tableau.connectionData = JSON.stringify({
@@ -721,7 +713,6 @@ $(document).ready(() => {
   });
 
   $('#login').on('click', () => {
-    console.log('Login Click');
     if ($('#account').val() !== '' && $('#apikey').val() !== '') {
       login($('#account').val().trim(), $('#apikey').val().trim(), $('#email').val().trim());
     }
