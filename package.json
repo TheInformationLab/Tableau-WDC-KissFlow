@@ -6,8 +6,8 @@
   "scripts": {
     "build": "webpack --mode production",
     "dev-client": "webpack-dev-server --mode development --open --hot --host 0.0.0.0 --port 8000",
-    "dev-server": "nodemon ./src/api/index.js",
     "deploy": "now dist/.",
+    "instant": "webpack --mode production && now dist/. && now alias",
     "live": "now alias"
   },
   "author": "Craig Bloodworth, The Information Lab",
@@ -43,27 +43,22 @@
     "webpack-dev-server": "^3.1.14"
   },
   "dependencies": {
-    "body-parser": "^1.18.3",
     "bootstrap": "^4.1.3",
     "cookies-js": "^1.2.3",
-    "cors": "^2.8.5",
-    "express": "^4.16.4",
     "flat": "^4.1.0",
     "font-awesome": "^4.7.0",
     "hammerjs": "^2.0.8",
     "jquery": "^1.12.3",
     "jsuri": "^1.3.1",
-    "micro": "^9.3.3",
-    "mongoose": "^5.3.15",
+    "mongodb-stitch-browser-sdk": "^4.4.0",
     "morgan": "^1.9.1",
     "node-waves": "^0.7.6",
     "popper.js": "^1.14.6",
     "qwebchannel": "^5.9.0",
-    "request": "^2.88.0",
     "string.prototype.endswith": "^0.2.0",
     "url": "^0.11.0"
   },
   "config": {
-    "versionNumber": "2.3.1"
+    "versionNumber": "2.3.0"
   }
 }
