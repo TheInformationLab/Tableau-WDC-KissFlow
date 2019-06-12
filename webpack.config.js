@@ -91,7 +91,6 @@ module.exports = {
     new CopyWebpackPlugin([{ from: 'src/vendors/mdb/mdb-addons', to: 'mdb-addons' }]),
     new CopyWebpackPlugin([{ from: 'src/img', to: 'img' }]),
     new CopyWebpackPlugin([{ from: 'now.json', to: 'now.json' }]),
-    new CopyWebpackPlugin([{ from: 'src/api', to: 'api' }]),
     new CopyWebpackPlugin([{ from: 'package-deploy.json', to: 'package.json' }]),
   ],
   devtool: 'source-map',
