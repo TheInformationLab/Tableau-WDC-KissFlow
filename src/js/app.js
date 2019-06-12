@@ -7,19 +7,19 @@ import 'bootstrap';
 // Material Design Bootstrap
 import '../vendors/mdb/js/mdb';
 
+const {
+  recordStat,
+  getProcesses,
+  getReqSchema,
+  getRequests,
+  processRequestProgress,
+} = require('../assets/mongo/browser');
+
 const tableauwdc = require('./tableauwdc/tableauwdc.js');
 
 tableauwdc.init();
 
 const { tableau } = window;
-
-let serverBase = '';
-let localDev = false;
-
-if (window.location.host !== 'kissflow-wdc.theinformationlab.io') {
-  serverBase = 'http://localhost:3001';
-  localDev = true;
-}
 
 const schProcess = [{
   id: 'Description',
@@ -178,320 +178,6 @@ const schema = {
 };
 
 // **
-// START Utility functions
-// **
-
-// Function getProcesses
-//  - Gets available processes for the KissFlow acccount
-// @callback      {array}   List of processes
-function getProcesses(accountID, apikey, runas) {
-  return new Promise((resolve, reject) => {
-    const settings = {
-      url: `${serverBase}/api/processes?account=${accountID}&key=${apikey}&runas=${runas}`,
-      method: 'GET',
-    };
-    $.ajax(settings)
-      .done((response) => {
-        // Remove spaces in object keys that are returned by KissFlow API
-        const res = response;
-        const resStr = JSON.stringify(response);
-        if (res.result === 'error') {
-          if (res.status === 404 || res.status === 401) {
-            reject(new Error('Invalid Credentials'));
-          }
-          tableau.log(res.status);
-          return;
-        }
-        const cleanedResponse = resStr.replace(/\s(?=\w+":)/g, '');
-        resolve(JSON.parse(cleanedResponse));
-      })
-      .fail((err) => {
-        reject(err);
-      });
-  });
-}
-
-function getEachRequestSchema(accountID, apikey, runas, process, callback) {
-  const settings = {
-    url: `${serverBase}/api/requestSchema?account=${accountID}&key=${apikey}&runas=${runas}&process=${process}`,
-    method: 'GET',
-  };
-  $.ajax(settings)
-    .done((response) => {
-      const headers = response;
-      if (headers.result === 'error') {
-        if (headers.status === 404 || headers.status === 401) {
-          callback({
-            result: 'error',
-            status: headers.status,
-            error: 'Invalid Credentials',
-          });
-        }
-        callback({
-          result: 'error',
-          status: headers.status,
-          error: headers.body,
-        });
-        return;
-      }
-      callback({
-        result: 'success',
-        headers,
-      });
-    })
-    .fail((err) => {
-      callback({
-        result: 'error',
-        error: err,
-      });
-    });
-}
-
-function getReqSchema(accountID, apikey, runas, processes) {
-  return new Promise((resolve) => {
-    let counter = 0;
-    const existingCols = [];
-    const req = [];
-    for (let j = 0; j < processes.length; j += 1) {
-      const id = processes[j].Id;
-      getEachRequestSchema(accountID, apikey, runas, id, (res) => {
-        counter += 1;
-        if (res.result === 'error') {
-          tableau.log(res.error);
-          res.headers = [];
-        }
-        const columns = res.headers;
-        columns.forEach((e, i) => {
-          if (existingCols.indexOf(columns[i].id) === -1) {
-            req.push(columns[i]);
-            existingCols.push(columns[i].id);
-          }
-        });
-        if (counter === processes.length) {
-          resolve(req);
-        }
-      });
-    }
-  });
-}
-
-// Function getRequests
-//  - Gets available requests each process
-// @callback      {array}   List of requests
-function getEachRequest(accountID, apikey, runas, process, callback, page, data) {
-  let urlPage = 1;
-  if (page) {
-    urlPage = page;
-  }
-  const settings = {
-    url: `${serverBase}/api/requests?account=${accountID}&key=${apikey}&runas=${runas}&process=${process}&page=${urlPage}`,
-    method: 'GET',
-  };
-  $.ajax(settings)
-    .done((response) => {
-      let requests = response;
-      if (requests.result === 'error') {
-        if (requests.status === 404 || requests.status === 401) {
-          callback({
-            result: 'error',
-            status: requests.status,
-            error: 'Invalid Credentials',
-          });
-        }
-        callback({
-          result: 'error',
-          status: requests.status,
-          error: requests.body,
-        });
-        return;
-      }
-      if (requests && requests.length > 0) {
-        requests.forEach((e, i) => {
-          // Iterate over the keys of object
-          Object.keys(e).forEach((key) => {
-            // Copy the value
-            const val = e[key];
-            const newKey = key.replace(/\s+/g, '');
-            // Remove key-value from object
-            delete requests[i][key];
-            // Add value with new key
-            requests[i][newKey] = val;
-            requests[i].ProcessId = process;
-          });
-        });
-      }
-      const anotherPage = requests.length === 50;
-      if (data) {
-        requests = requests.concat(data);
-      }
-      if (anotherPage) {
-        getEachRequest(accountID, apikey, runas, process, callback, urlPage + 1, requests);
-      } else {
-        callback({
-          result: 'success',
-          requests,
-        });
-      }
-    })
-    .fail((err) => {
-      callback({
-        result: 'error',
-        error: err,
-      });
-    });
-}
-
-function getRequests(accountID, apikey, runas, processIds) {
-  return new Promise((resolve) => {
-    const processCount = processIds.length;
-    let counter = 0;
-    let ret = [];
-    for (let i = 0; i < processCount; i += 1) {
-      const id = processIds[i];
-      getEachRequest(accountID, apikey, runas, id, (res) => {
-        counter += 1;
-        if (res.result === 'error') {
-          tableau.log(res.error);
-          res.requests = [];
-        }
-        ret = ret.concat(res.requests);
-        if (counter === processCount) {
-          resolve(ret);
-        }
-      });
-    }
-  });
-}
-
-function processProgress(progress, requestId) {
-  const context = {};
-  let parkArr = [];
-  const branchArr = [];
-  Object.keys(progress).forEach((key) => {
-    const keyArr = key.split('.');
-    if (keyArr[0] === 'Steps' && keyArr[2] !== 'Branches') {
-      let obj = {};
-      if (parkArr[parseInt(keyArr[1], 10)]) {
-        obj = parkArr[parseInt(keyArr[1], 10)];
-      }
-      if (keyArr[2] === 'AssignedTo') {
-        obj.AssignedTo = progress[key];
-      }
-      if (keyArr[2] === 'ReassignAudit' && keyArr[4] === 'reassigned_by') {
-        obj.reassignedBy = progress[key];
-      } else if (keyArr[2] === 'ReassignAudit' && keyArr[4] === 'reassigned_to') {
-        obj.reassignedTo = progress[key];
-      } else {
-        const objKey = key.replace(`${keyArr[0]}.${keyArr[1]}.`, '');
-        const fixKey = objKey.replace(/\s+/g, '');
-        obj[fixKey] = progress[key];
-      }
-      parkArr[parseInt(keyArr[1], 10)] = obj;
-    } else if (keyArr[0] === 'Steps' && keyArr[2] === 'Branches') {
-      const objKey = key.replace(`${keyArr[0]}.${keyArr[1]}.${keyArr[2]}.${keyArr[3]}.`, '');
-      let branch = {};
-      if (branchArr[parseInt(keyArr[3], 10)]) {
-        branch = branchArr[parseInt(keyArr[3], 10)];
-      }
-      let fixKey = objKey.replace(/\s+/g, '');
-      if (fixKey === 'CompletedPercentage') {
-        fixKey = 'BranchCompletedPercentage';
-      }
-      if (fixKey === 'Type') {
-        fixKey = 'BranchType';
-      }
-      branch[fixKey] = progress[key];
-      branchArr[parseInt(keyArr[3], 10)] = branch;
-    } else {
-      const fixKey = key.replace(/\s+/g, '');
-      context[fixKey] = progress[key];
-    }
-  });
-  for (let i = 0; i < parkArr.length; i += 1) {
-    parkArr[i] = Object.assign({}, context, parkArr[i]);
-    parkArr[i].RequestId = requestId;
-  }
-  if (branchArr.length > 0) {
-    for (let i = 0; i < branchArr.length; i += 1) {
-      parkArr = parkArr.concat(processProgress(branchArr[i], requestId));
-    }
-  }
-  return parkArr;
-}
-
-// Function getRequestProgress
-//  - Gets available requests each process
-// @callback      {array}   List of requests
-function getRequestProgress(accountID, apikey, runas, process, request, callback) {
-  const settings = {
-    url: `${serverBase}/api/progress?account=${accountID}&key=${apikey}&runas=${runas}&process=${process}&request=${request}`,
-    method: 'GET',
-  };
-  $.ajax(settings)
-    .done((resp) => {
-      const response = resp;
-      if (response.result === 'error') {
-        if (response.status === 404 || response.status === 401) {
-          callback({
-            result: 'error',
-            status: response.status,
-            error: 'Invalid Credentials',
-          });
-        }
-        callback({
-          result: 'error',
-          status: response.status,
-          error: response.body,
-        });
-        return;
-      }
-      if (response && response.error) {
-        callback({
-          result: 'empty',
-          progress: [],
-        });
-      } else {
-        const progress = processProgress(response, request);
-        callback({
-          result: 'success',
-          progress,
-        });
-      }
-    })
-    .fail((err) => {
-      callback({
-        result: 'error',
-        error: err,
-      });
-    });
-}
-
-function processRequestProgress(account, apiKey, runas, reqArr) {
-  return new Promise((resolve) => {
-    let retArr = [];
-    const reqCount = reqArr.length;
-    let counter = 0;
-    for (let i = 0; i < reqArr.length; i += 1) {
-      getRequestProgress(account, apiKey, runas, reqArr[i].ProcessId, reqArr[i].Id, (res) => {
-        counter += 1;
-        if (res.result === 'error') {
-          tableau.log(res.error);
-          res.progress = [];
-        }
-        retArr = retArr.concat(res.progress);
-        if (reqCount === counter) {
-          resolve(retArr);
-        }
-      });
-    }
-  });
-}
-
-// **
-// END Utility functions
-// **
-
-// **
 // START tabWDC WDC Code
 // **
 
@@ -527,27 +213,8 @@ kfConnector.init = (initCallback) => {
   }
   $('.wdc-title').hide();
   $('#loginForm').show();
-  if (!localDev) {
-    const settings = {
-      url: '/api/stats',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      processData: false,
-      data: '{\n\t"wdc": "kissflow",\n\t"action": "view"\n}',
-    };
-    $.ajax(settings)
-      .done((response) => {
-        console.log(response);
-      })
-      .always(() => {
-        // tableau.submit();
-      });
-    initCallback();
-  } else {
-    initCallback();
-  }
+  recordStat('kissflow', 'view');
+  initCallback();
 };
 
 kfConnector.shutdown = (shutdownCallback) => {
@@ -585,21 +252,7 @@ kfConnector.getSchema = (schemaCallback) => {
 
 // Download the data
 kfConnector.getData = (table, doneCallback) => {
-  if (!localDev) {
-    const settings = {
-      url: '/api/stats',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      processData: false,
-      data: '{\n\t"wdc": "kissflow",\n\t"action": "download"\n}',
-    };
-    $.ajax(settings)
-      .done((response) => {
-        console.log(response);
-      });
-  }
+  recordStat('kissflow', 'download');
   const connData = JSON.parse(tableau.connectionData);
   if (table.tableInfo.id === 'processes') {
     tableau.reportProgress('Getting KissFlow Processes');
@@ -660,13 +313,14 @@ kfConnector.getData = (table, doneCallback) => {
       .then(requests => processRequestProgress(tableau.username, tableau.password,
         connData.runas, requests))
       .then((data) => {
+        console.log('[app.js data]', data);
         table.appendRows(data);
         tableau.log(`363 ${data.length} request progress records written`);
         tableau.log('364 Getting progress for requests complete');
         doneCallback();
       })
       .catch((err) => {
-        tableau.log('432 There was an error with getting process request progress');
+        tableau.log('432  There was an error with getting process request progress');
         tableau.log(JSON.stringify(err));
         // tableau.abortWithError(err.message);
       });
